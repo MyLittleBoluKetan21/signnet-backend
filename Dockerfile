@@ -3,7 +3,8 @@ FROM python:3.10-slim
 # Install dependensi OS untuk OpenCV, MediaPipe, dan MySQL compiler
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
+    libgles2 \
     libglib2.0-0 \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
