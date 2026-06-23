@@ -24,10 +24,11 @@ ONNX_PATH = os.path.join(MODEL_DIR, 'rf_model.onnx')
 LARAVEL_RECEIVE_URL = os.getenv('APP_URL', 'https://signnet-web-production.up.railway.app') + '/api/sync-model'
 
 db_config = {
-    'host': '127.0.0.1',
-    'user': 'root',
-    'password': '',
-    'database': 'sign_language_db'
+    'host': os.getenv('DB_HOST', '127.0.0.1'),
+    'user': os.getenv('DB_USERNAME', 'root'),
+    'password': os.getenv('DB_PASSWORD', ''),
+    'database': os.getenv('DB_DATABASE', 'sign_language_db'),
+    'port': int(os.getenv('DB_PORT', 3306))
 }
 
 def convert_to_onnx(scikit_model, target_path):
