@@ -21,7 +21,7 @@ ENCODER_PATH = os.path.join(MODEL_DIR, 'label_encoder.joblib')
 META_PATH = os.path.join(MODEL_DIR, 'meta_model.json')
 ONNX_PATH = os.path.join(MODEL_DIR, 'rf_model.onnx')
 
-LARAVEL_RECEIVE_URL = 'http://127.0.0.1:8000/api/sync-model'
+LARAVEL_RECEIVE_URL = os.getenv('APP_URL', 'https://signnet-web-production.up.railway.app') + '/api/sync-model'
 
 db_config = {
     'host': '127.0.0.1',
@@ -189,7 +189,7 @@ def train():
         min_samples_leaf=2,
         max_features="sqrt",
         bootstrap=True,
-        n_jobs=-1,
+        n_jobs=1,
         random_state=42
     )
     model.fit(X_train, y_train)
