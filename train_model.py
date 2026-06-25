@@ -5,6 +5,7 @@ import os
 import joblib
 import mysql.connector
 import requests
+import gzip
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
@@ -36,42 +37,56 @@ def convert_to_onnx(scikit_model, target_path):
     try:
         initial_type = [('float_input', FloatTensorType([None, 126]))]
         onnx_model = convert_sklearn(scikit_model, initial_types=initial_type, options={'zipmap': False})
+        
+        # 1. Simpan file asli .onnx
         with open(target_path, "wb") as f:
             f.write(onnx_model.SerializeToString())
-        print(f"✅ Berhasil mengonversi dan menyimpan model ke: {target_path}")
+            
+        # 2. BUAT VERSI KOMPRESI (.onnx.gz) -> Ini yang akan di-download browser
+        gz_path = target_path + ".gz"
+        with open(target_path, "rb") as f_in:
+            with gzip.open(gz_path, "wb") as f_out:
+                f_out.writelines(f_in)
+                
+        print(f"✅ Berhasil mengonversi ke ONNX dan membuat kompresi GZ: {gz_path}")
     except Exception as e:
         print(f"⚠️ Gagal melakukan konversi ONNX: {str(e)}")
 
 def send_assets_to_laravel():
-    print("🔄 Mengirim file model dan metadata terbaru ke Laravel frontend...")
+    print("🔄 Mengirim file model (Compressed) dan metadata terbaru ke Laravel frontend...")
     try:
-        if not os.path.exists(ONNX_PATH) or not os.path.exists(META_PATH) or not os.path.exists(LABELS_PATH):
-            print("⚠️ File model, metadata, atau labels tidak ditemukan untuk dikirim.")
+        # Gunakan path versi GZ untuk pengiriman
+        ONNX_GZ_PATH = ONNX_PATH + ".gz"
+        
+        if not os.path.exists(ONNX_GZ_PATH) or not os.path.exists(META_PATH) or not os.path.exists(LABELS_PATH):
+            print("⚠️ File model compressed (.gz), metadata, atau labels tidak ditemukan untuk dikirim.")
             return
 
         print(f"🔗 Menghubungi URL: {LARAVEL_RECEIVE_URL} ...")
         
-        with open(ONNX_PATH, 'rb') as onnx_file, \
+        # PERUBAHAN: Buka file rf_model.onnx.gz (bukan .onnx mentah)
+        with open(ONNX_GZ_PATH, 'rb') as onnx_file, \
              open(META_PATH, 'rb') as json_file, \
-             open(LABELS_PATH, 'rb') as labels_file: # <-- PERUBAHAN: Buka file labels.json
+             open(LABELS_PATH, 'rb') as labels_file:
             
             files = {
-                'onnx_model': ('rf_model.onnx', onnx_file, 'application/octet-stream'),
+                # Kirim file .gz namun tetap beri nama berekstensi .onnx.gz agar Laravel tahu
+                'onnx_model': ('rf_model.onnx.gz', onnx_file, 'application/gzip'),
                 'meta_model': ('meta_model.json', json_file, 'application/json'),
-                'labels': ('labels.json', labels_file, 'application/json') # <-- PERUBAHAN: Kirim labels.json ke Laravel
+                'labels': ('labels.json', labels_file, 'application/json')
             }
             headers = {'Accept': 'application/json'}
-            response = requests.post(LARAVEL_RECEIVE_URL, files=files, headers=headers, timeout=15)
+            response = requests.post(LARAVEL_RECEIVE_URL, files=files, headers=headers, timeout=25) # Timeout dinaikkan ke 25s untuk data besar
             
             print(f"📥 Respon diterima dengan Status Code: {response.status_code}")
             
             if response.status_code == 200:
-                print("🚀 [AUTO-SYNC] Berhasil menyalin model, metadata, dan labels ke folder public Laravel!")
+                print("🚀 [AUTO-SYNC] Berhasil menyalin model terkompresi, metadata, dan labels ke Laravel!")
             else:
                 print(f"⚠️ [AUTO-SYNC] Laravel menolak file. Respon Raw: {response.text}")
                 
     except requests.exceptions.Timeout:
-        print("❌ [AUTO-SYNC] Timeout! Laravel lama banget merespon. Cek server php artisan.")
+        print("❌ [AUTO-SYNC] Timeout! Upload model membutuhkan waktu lebih lama. Cek koneksi Railway.")
     except Exception as e:
         print(f"⚠️ [AUTO-SYNC] Gagal terhubung ke Laravel untuk sinkronisasi file: {str(e)}")
 
@@ -190,9 +205,9 @@ def train():
 
     # 5. TRAINING MODEL
     model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=15,
-        min_samples_leaf=2,
+        n_estimators=100,
+        max_depth=10,
+        min_samples_leaf=4,
         max_features="sqrt",
         bootstrap=True,
         n_jobs=1,
