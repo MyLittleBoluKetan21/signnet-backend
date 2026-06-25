@@ -19,6 +19,7 @@ MODEL_DIR = os.path.join(APP_DIR, 'model')
 MODEL_PATH = os.path.join(MODEL_DIR, 'rf_model.joblib')
 ENCODER_PATH = os.path.join(MODEL_DIR, 'label_encoder.joblib')
 META_PATH = os.path.join(MODEL_DIR, 'meta_model.json')
+LABELS_PATH = os.path.join(MODEL_DIR, 'labels.json') # <-- TAMBAHAN PATH LABELS
 ONNX_PATH = os.path.join(MODEL_DIR, 'rf_model.onnx')
 
 LARAVEL_RECEIVE_URL = os.getenv('APP_URL', 'https://signnet-web-production.up.railway.app') + '/api/sync-model'
@@ -44,16 +45,20 @@ def convert_to_onnx(scikit_model, target_path):
 def send_assets_to_laravel():
     print("🔄 Mengirim file model dan metadata terbaru ke Laravel frontend...")
     try:
-        if not os.path.exists(ONNX_PATH) or not os.path.exists(META_PATH):
-            print("⚠️ File model atau metadata tidak ditemukan untuk dikirim.")
+        if not os.path.exists(ONNX_PATH) or not os.path.exists(META_PATH) or not os.path.exists(LABELS_PATH):
+            print("⚠️ File model, metadata, atau labels tidak ditemukan untuk dikirim.")
             return
 
         print(f"🔗 Menghubungi URL: {LARAVEL_RECEIVE_URL} ...")
         
-        with open(ONNX_PATH, 'rb') as onnx_file, open(META_PATH, 'rb') as json_file:
+        with open(ONNX_PATH, 'rb') as onnx_file, \
+             open(META_PATH, 'rb') as json_file, \
+             open(LABELS_PATH, 'rb') as labels_file: # <-- PERUBAHAN: Buka file labels.json
+            
             files = {
                 'onnx_model': ('rf_model.onnx', onnx_file, 'application/octet-stream'),
-                'meta_model': ('meta_model.json', json_file, 'application/json')
+                'meta_model': ('meta_model.json', json_file, 'application/json'),
+                'labels': ('labels.json', labels_file, 'application/json') # <-- PERUBAHAN: Kirim labels.json ke Laravel
             }
             headers = {'Accept': 'application/json'}
             response = requests.post(LARAVEL_RECEIVE_URL, files=files, headers=headers, timeout=15)
@@ -61,7 +66,7 @@ def send_assets_to_laravel():
             print(f"📥 Respon diterima dengan Status Code: {response.status_code}")
             
             if response.status_code == 200:
-                print("🚀 [AUTO-SYNC] Berhasil menyalin model dan metadata ke folder public Laravel!")
+                print("🚀 [AUTO-SYNC] Berhasil menyalin model, metadata, dan labels ke folder public Laravel!")
             else:
                 print(f"⚠️ [AUTO-SYNC] Laravel menolak file. Respon Raw: {response.text}")
                 
@@ -71,7 +76,7 @@ def send_assets_to_laravel():
         print(f"⚠️ [AUTO-SYNC] Gagal terhubung ke Laravel untuk sinkronisasi file: {str(e)}")
 
 def train():
-    files_to_clean = [MODEL_PATH, ENCODER_PATH, META_PATH, ONNX_PATH]
+    files_to_clean = [MODEL_PATH, ENCODER_PATH, META_PATH, LABELS_PATH, ONNX_PATH] # <-- PERUBAHAN: Ikut bersihkan LABELS_PATH
     for file_path in files_to_clean:
         if os.path.exists(file_path):
             try:
@@ -241,6 +246,9 @@ def train():
     convert_to_onnx(model, ONNX_PATH)
     label_mapping = {str(i): str(label) for i, label in enumerate(label_encoder.classes_)}
 
+    # PERBUATAN BARU: Ekstrak pure array list label murni untuk kebutuhan tracking cepat di frontend
+    pure_labels = [str(label) for label in label_encoder.classes_]
+
     result = {
         "status": "success",
         "accuracy": float(accuracy),
@@ -256,8 +264,13 @@ def train():
         "classification_report": report
     }
 
+    # Simpan file meta lengkap (Tetap utuh seperti bawaan Anda)
     with open(META_PATH, "w") as f:
         json.dump(result, f, indent=4)
+
+    # PERBUATAN BARU: Simpan file murni labels.json super kecil tanpa spasi/indentasi
+    with open(LABELS_PATH, "w") as f:
+        json.dump(pure_labels, f)
 
     send_assets_to_laravel()
     return result
