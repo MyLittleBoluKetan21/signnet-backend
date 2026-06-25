@@ -205,8 +205,8 @@ def train():
 
     # 5. TRAINING MODEL
     model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=15,
+        n_estimators=150,
+        max_depth=12,
         min_samples_leaf=4,
         max_features="sqrt",
         bootstrap=True,
