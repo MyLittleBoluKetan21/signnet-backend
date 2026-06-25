@@ -23,7 +23,9 @@ META_PATH = os.path.join(MODEL_DIR, 'meta_model.json')
 LABELS_PATH = os.path.join(MODEL_DIR, 'labels.json') # <-- TAMBAHAN PATH LABELS
 ONNX_PATH = os.path.join(MODEL_DIR, 'rf_model.onnx')
 
-LARAVEL_RECEIVE_URL = os.getenv('APP_URL', 'https://signnet-web-production.up.railway.app') + '/api/sync-model'
+# 1. Ganti URL dasar agar menembak ke endpoint ModelSyncController Laravel kamu
+# 2. Sesuaikan rute URL dari /api/sync-model menjadi /api/receive-model (sesuai isi ModelSyncController)
+LARAVEL_RECEIVE_URL = os.getenv('APP_URL', 'https://signnet-web-production.up.railway.app').rstrip('/') + '/api/receive-model'
 
 db_config = {
     'host': os.getenv('DB_HOST', '127.0.0.1'),

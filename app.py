@@ -170,21 +170,28 @@ def predict():
             "error": str(e)
         }), 500
 
-@app.route('/api/train', methods=['POST'])
-def train_model_route():
+@app.route('/train-cloud', methods=['POST'])
+def train_cloud_route():
     try:
-        print("Menerima request training...")
+        print("🚀 [CLOUD] Menerima request cloud-training dari Laravel...")
+        
+        # 1. Jalankan fungsi training bawaan dari train_model.py
         result = start_training()
+        
         if result and result.get('status') == 'success':
+            # Muat ulang aset internal flask jika diperlukan secara lokal
             load_all_assets()
-            return jsonify(result)
+            
+            print("✅ [CLOUD] Proses training selesai dan file model dikirim balik!")
+            return jsonify(result), 200
         else:
-            print("Gagal:", result)
+            print("❌ [CLOUD] Proses training gagal di train_model.py:", result)
             return jsonify(result), 400
+            
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': f"Cloud training exception: {str(e)}"}), 500
 
 @app.route('/api/get_total_samples', methods=['GET'])
 def get_total_samples():
