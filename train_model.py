@@ -93,12 +93,12 @@ def send_assets_to_laravel():
         print(f"⚠️ [AUTO-SYNC] Gagal terhubung ke Laravel untuk sinkronisasi file: {str(e)}")
 
 def train():
-    files_to_clean = [MODEL_PATH, ENCODER_PATH, META_PATH, LABELS_PATH, ONNX_PATH] # <-- PERUBAHAN: Ikut bersihkan LABELS_PATH
+    files_to_clean = [MODEL_PATH, ENCODER_PATH, META_PATH, LABELS_PATH, ONNX_PATH] 
     for file_path in files_to_clean:
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
-                print(file_path)
+                print(f"🧹 Menghapus file lama: {file_path}")
             except Exception as e:
                 print(f"⚠️ Gagal menghapus file lama {file_path}: {e}")
     try:
@@ -148,18 +148,12 @@ def train():
     label_encoder = LabelEncoder()
     y_encoded = label_encoder.fit_transform(y_raw)
 
-    # =========================================================================
-    # PERBAIKAN UTAMA: CHRONOLOGICAL/BLOCK SPLIT (Mencegah Kebocoran Data)
-    # =========================================================================
-    # Jangan gunakan train_test_split acak. Kita ambil 20% data terakhir secara berurutan
-    # dari masing-masing label sebagai data uji agar tidak tercampur data tiruan.
+    # CHRONOLOGICAL/BLOCK SPLIT
     X_train_list, X_test_list = [], []
     y_train_list, y_test_list = [], []
     
     for label_idx in np.unique(y_encoded):
         indices = np.where(y_encoded == label_idx)[0]
-        
-        # Tentukan batas 80% data awal
         split_boundary = int(len(indices) * 0.8)
         
         train_idx = indices[:split_boundary]
@@ -177,18 +171,13 @@ def train():
 
     print("\n========= INVESTIGASI DATA KEMBAR =========")
     print(f"Bentuk X_train: {X_train_orig.shape}, Bentuk X_test: {X_test.shape}")
-    
-    # Ambil 3 baris pertama dari data latih kelas pertama
     print("\nSample 3 baris pertama X_train (5 fitur pertama saja):")
     print(X_train_orig[:3, :5])
-    
-    # Ambil 3 baris pertama dari data uji kelas pertama
     print("\nSample 3 baris pertama X_test (5 fitur pertama saja):")
     print(X_test[:3, :5])
     print("===========================================\n")
-    # =========================================================================
 
-    # 4. AUGMENTASI (Hanya diterapkan pada Data Latih)
+    # 4. AUGMENTASI
     X_train_aug = []
     y_train_aug = []
     for i in range(len(X_train_orig)):
@@ -197,7 +186,6 @@ def train():
         X_train_aug.append(row)
         y_train_aug.append(label)
 
-        # Skala noise 0.02 - 0.03 sudah cukup memberikan variasi posisi koordinat landmark
         noise = np.random.normal(0, 0.02, row.shape)
         X_train_aug.append(row + noise)
         y_train_aug.append(label)
@@ -218,16 +206,36 @@ def train():
     )
     model.fit(X_train, y_train)
 
+    # =========================================================================
+    # LOGIKA CEK OVERFITTING (LOCAL SYSTEM)
+    # =========================================================================
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)  # Menggunakan y_test_pred agar konsisten
+
+    accuracy_train = float(accuracy_score(y_train, y_train_pred))
+    accuracy_test = float(accuracy_score(y_test, y_test_pred))
+    
+    selisih = accuracy_train - accuracy_test
+    if selisih > 0.15:
+        status_fit = "Overfitting"
+    elif accuracy_train < 0.60 and accuracy_test < 0.60:
+        status_fit = "Underfitting"
+    else:
+        status_fit = "Good Fit"
+
+    print(f"📊 Akurasi Training: {accuracy_train * 100:.2f}%")
+    print(f"📊 Akurasi Testing:  {accuracy_test * 100:.2f}%")
+    print(f"📢 Status Model:     {status_fit}\n")
+    # =========================================================================
+
     # 6. EVALUASI JURUSAN BARU
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
     report = classification_report(
-        y_test, y_pred,
+        y_test, y_test_pred,
         target_names=[str(c) for c in label_encoder.classes_],
         output_dict=True
     )
 
-    cm = confusion_matrix(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_test_pred)
     classes = label_encoder.classes_
 
     total_tp = total_tn = total_fp = total_fn = 0
@@ -263,13 +271,13 @@ def train():
 
     convert_to_onnx(model, ONNX_PATH)
     label_mapping = {str(i): str(label) for i, label in enumerate(label_encoder.classes_)}
-
-    # PERBUATAN BARU: Ekstrak pure array list label murni untuk kebutuhan tracking cepat di frontend
     pure_labels = [str(label) for label in label_encoder.classes_]
 
     result = {
         "status": "success",
-        "accuracy": float(accuracy),
+        "accuracy": accuracy_test,
+        "accuracy_training": accuracy_train,   # Data tambahan untuk Laravel
+        "model_fitting_status": status_fit,    # Data tambahan untuk Laravel
         "total_data": len(rows),
         "total_uji": int(len(y_test)),
         "total_labels": int(len(classes)),
@@ -282,11 +290,9 @@ def train():
         "classification_report": report
     }
 
-    # Simpan file meta lengkap (Tetap utuh seperti bawaan Anda)
     with open(META_PATH, "w") as f:
         json.dump(result, f, indent=4)
 
-    # PERBUATAN BARU: Simpan file murni labels.json super kecil tanpa spasi/indentasi
     with open(LABELS_PATH, "w") as f:
         json.dump(pure_labels, f)
 
