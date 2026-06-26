@@ -180,14 +180,46 @@ def train():
     # 4. AUGMENTASI
     X_train_aug = []
     y_train_aug = []
+
     for i in range(len(X_train_orig)):
         row = X_train_orig[i]
         label = y_train_orig[i]
+
+        # --- Data asli selalu masuk ---
         X_train_aug.append(row)
         y_train_aug.append(label)
 
+        # --- 1. Noise kecil (simulasi tremor/getaran tangan) ---
         noise = np.random.normal(0, 0.02, row.shape)
         X_train_aug.append(row + noise)
+        y_train_aug.append(label)
+
+        # --- 2. Scale (simulasi tangan dekat/jauh dari kamera) ---
+        scale = np.random.uniform(0.85, 1.15)
+        X_train_aug.append(row * scale)
+        y_train_aug.append(label)
+
+        # --- 3. Rotasi 2D kecil (simulasi kemiringan pergelangan tangan) ---
+        angle = np.random.uniform(-0.15, 0.15)
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        row_rotated = row.copy()
+        for idx in range(0, len(row), 3):
+            x, y = row[idx], row[idx + 1]
+            row_rotated[idx]     = x * cos_a - y * sin_a
+            row_rotated[idx + 1] = x * sin_a + y * cos_a
+        X_train_aug.append(row_rotated)
+        y_train_aug.append(label)
+
+        # --- 4. Mirror horizontal (simulasi tangan kiri/kanan) ---
+        row_mirrored = row.copy()
+        for idx in range(0, len(row), 3):
+            row_mirrored[idx] = -row[idx]   # balik sumbu X saja
+        X_train_aug.append(row_mirrored)
+        y_train_aug.append(label)
+
+        # --- 5. Kombinasi noise + scale sekaligus ---
+        combo = (row + np.random.normal(0, 0.01, row.shape)) * np.random.uniform(0.9, 1.1)
+        X_train_aug.append(combo)
         y_train_aug.append(label)
 
     X_train = np.array(X_train_aug)
